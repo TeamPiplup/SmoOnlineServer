@@ -5,11 +5,6 @@ rules:
     mergeMethod: hardreset  
   - base: dev
     upstream: master
-    assignees:
-      - wei
-    reviewers:
-      - wei
     conflictReviewers:
-      - wei
       - piplup55
 conflictLabel: "conflict"
