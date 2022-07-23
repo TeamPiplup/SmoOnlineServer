@@ -6,3 +6,4 @@ rules:
     conflictReviewers:
       - piplup55
 conflictLabel: "conflict"
+label: "Pull"
