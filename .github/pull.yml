@@ -3,8 +3,6 @@ rules:
   - base: master            
     upstream: TeamPiplup:upstream   
     mergeMethod: hardreset  
-  - base: dev
-    upstream: master
     conflictReviewers:
       - piplup55
 conflictLabel: "conflict"
