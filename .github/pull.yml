@@ -1,0 +1,15 @@
+version: "1"
+rules:                      
+  - base: master            
+    upstream: TeamPiplup:upstream   
+    mergeMethod: hardreset  
+  - base: dev
+    upstream: master
+    assignees:
+      - wei
+    reviewers:
+      - wei
+    conflictReviewers:
+      - wei
+      - piplup55
+conflictLabel: "conflict"
