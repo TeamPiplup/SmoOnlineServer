@@ -1,0 +1,8 @@
+version: "1"
+rules:                      
+  - base: upstream           
+    upstream: TeamPiplup:master   
+    mergeMethod: none  
+    conflictReviewers:
+      - piplup55
+conflictLabel: "conflict"
