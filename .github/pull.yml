@@ -1,7 +1,5 @@
 version: "1"
 rules:                      
-version: "1"
-rules:                      
   - base: upstream           
     upstream: Sanae6:master   
     mergeMethod: none
