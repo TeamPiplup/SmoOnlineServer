@@ -151,39 +151,133 @@ server.PacketHandler = (c, p) => {
 };
 
 CommandHandler.RegisterCommand("rejoin", args => {
-    if (args.Length  == 0) {
-        return "Usage: rejoin <* | usernames...>";
+    if (args.Length == 0) {
+        return "Usage: rejoin <* | !* (usernames to not rejoin...) | (usernames to rejoin...)>";
     }
-    bool moreThanOne = false;
-    StringBuilder builder = new StringBuilder();
-    Client[] clients = (args[0].Trim() == "*"
-        ? server.Clients.Where(c => c.Connected)
-        : server.Clients.Where(c =>
-            c.Connected && args.Any(x => c.Name == x || (Guid.TryParse(x, out Guid result) && result == c.Id)))).ToArray();
-    foreach (Client user in clients) {
-        if (moreThanOne) builder.Append(", ");
-        builder.Append(user.Name);
-        user.Dispose();
-        moreThanOne = true;
+    List<string> failToFind = new();
+    List<Client> toRejoin;
+    List<(string arg, IEnumerable<string> amb)> ambig = new();
+    if (args[0] == "*")
+        toRejoin = new(server.Clients.Where(c => c.Connected));
+    else
+    {
+        toRejoin = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
+        for (int i = 1; i < args.Length; i++)
+        {
+            string arg = args[i];
+            IEnumerable<Client> search = server.Clients.Where(c => c.Connected &&
+                (c.Name.ToLower().StartsWith(arg.ToLower()) || (Guid.TryParse(arg, out Guid res) && res == c.Id)));
+            if (!search.Any())
+                failToFind.Add(arg.ToLower()); //none found
+            else if (search.Count() > 1)
+            {
+                Client? exact = search.FirstOrDefault(x => x.Name == arg);
+                if (!ReferenceEquals(exact, null))
+                {
+                    //even though multiple matches, since exact match, it isn't ambiguous
+                    if (args[0] == "!*")
+                        toRejoin.Remove(exact);
+                    else
+                        toRejoin.Add(exact);
+                }
+                else
+                {
+                    ambig.Add((arg.ToLower(), search.Select(x => x.Name))); //more than one match
+                    foreach (var rem in search.ToList()) //need copy because can't remove from list while iterating over it
+                        toRejoin.Remove(rem);
+                }
+            }
+            else
+            {
+                //only one match, so autocomplete
+                if (args[0] == "!*")
+                    toRejoin.Remove(search.First());
+                else
+                    toRejoin.Add(search.First());
+            }
+        }
     }
 
-    return clients.Length > 0 ? $"Caused {builder} to rejoin" : "Usage: rejoin <usernames...>";
+    StringBuilder sb = new StringBuilder();
+    sb.Append(toRejoin.Count > 0 ? "Crashed: " + string.Join(", ", toRejoin.Select(x => $"\"{x.Name}\"")) + "\n" : "");
+    sb.Append(failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
+    if (ambig.Count > 0)
+    {
+        ambig.ForEach(x =>
+        {
+            sb.Append($"Ambiguous for {x.arg}: {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}\n");
+        });
+        sb.Remove(sb.Length - 1, 1); //remove extra nl
+    }
+
+    foreach (Client user in toRejoin) {
+        user.Dispose();
+    }
+
+    return sb.ToString();
 });
 
 CommandHandler.RegisterCommand("crash", args => {
-    if (args.Length  == 0) {
-        return "Usage: crash <* | usernames...>";
+    if (args.Length == 0) {
+        return "Usage: crash <* | !* (usernames to not crash...) | (usernames to crash...)>";
     }
-    bool moreThanOne = false;
-    StringBuilder builder = new StringBuilder();
-    Client[] clients = (args[0].Trim() == "*"
-        ? server.Clients.Where(c => c.Connected)
-        : server.Clients.Where(c =>
-            c.Connected && args.Any(x => c.Name == x || (Guid.TryParse(x, out Guid result) && result == c.Id)))).ToArray();
-    foreach (Client user in clients) {
-        if (moreThanOne) builder.Append(", ");
-        moreThanOne = true;
-        builder.Append(user.Name);
+    List<string> failToFind = new();
+    List<Client> toCrash;
+    List<(string arg, IEnumerable<string> amb)> ambig = new();
+    if (args[0] == "*")
+        toCrash = new(server.Clients.Where(c => c.Connected));
+    else
+    {
+        toCrash = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
+        for (int i = 1; i < args.Length; i++)
+        {
+            string arg = args[i];
+            IEnumerable<Client> search = server.Clients.Where(c => c.Connected &&
+                (c.Name.ToLower().StartsWith(arg.ToLower()) || (Guid.TryParse(arg, out Guid res) && res == c.Id)));
+            if (!search.Any())
+                failToFind.Add(arg.ToLower()); //none found
+            else if (search.Count() > 1)
+            {
+                Client? exact = search.FirstOrDefault(x => x.Name == arg);
+                if (!ReferenceEquals(exact, null))
+                {
+                    //even though multiple matches, since exact match, it isn't ambiguous
+                    if (args[0] == "!*")
+                        toCrash.Remove(exact);
+                    else
+                        toCrash.Add(exact);
+                }
+                else
+                {
+                    ambig.Add((arg.ToLower(), search.Select(x => x.Name))); //more than one match
+                    foreach (var rem in search.ToList()) //need copy because can't remove from list while iterating over it
+                        toCrash.Remove(rem);
+                }
+            }
+            else
+            {
+                //only one match, so autocomplete
+                if (args[0] == "!*")
+                    toCrash.Remove(search.First());
+                else
+                    toCrash.Add(search.First());
+            }
+        }
+    }
+
+    StringBuilder sb = new StringBuilder();
+    sb.Append(toCrash.Count > 0 ? "Crashed: " + string.Join(", ", toCrash.Select(x => $"\"{x.Name}\"")) + "\n" : "");
+    sb.Append(failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
+    if (ambig.Count > 0)
+    {
+        ambig.ForEach(x =>
+        {
+            sb.Append($"Ambiguous for {x.arg}: {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}\n");
+        });
+        sb.Remove(sb.Length - 1, 1); //remove extra nl
+    }
+
+    foreach (Client user in toCrash) {
         Task.Run(async () => {
             await user.Send(new ChangeStagePacket {
                 Id = "$among$us/SubArea",
@@ -195,24 +289,101 @@ CommandHandler.RegisterCommand("crash", args => {
         });
     }
 
-    return clients.Length > 0 ? $"Crashed {builder}" : "Usage: crash <usernames...>";
+    return sb.ToString();
 });
 
 CommandHandler.RegisterCommand("ban", args => {
     if (args.Length == 0) {
-        return "Usage: ban <* | usernames...>";
+        return "Usage: ban <* | !* (usernames to not ban...) | (usernames to ban...)>";
     }
-    bool moreThanOne = false;
-    StringBuilder builder = new StringBuilder();
+    List<string> failToFind = new();
+    List<Client> toBan;
+    List<(string arg, IEnumerable<string> amb)> ambig = new();
 
-    Client[] clients = (args[0].Trim() == "*"
-        ? server.Clients.Where(c => c.Connected)
-        : server.Clients.Where(c =>
-            c.Connected && args.Any(x => c.Name == x || (Guid.TryParse(x, out Guid result) && result == c.Id)))).ToArray();
-    foreach (Client user in clients) {
-        if (moreThanOne) builder.Append(", ");
-        moreThanOne = true;
-        builder.Append(user.Name);
+    //void TestAddClients()
+    //{
+    //    Client c1 = new Client(null!);
+    //    c1.Connected = true;
+    //    c1.Name = "Moo";
+    //    server.Clients.Add(c1);
+
+    //    Client c2 = new Client(null!);
+    //    c2.Connected = true;
+    //    c2.Name = "Moomoss";
+    //    server.Clients.Add(c2);
+
+    //    Client c3 = new Client(null!);
+    //    c3.Connected = true;
+    //    c3.Name = "mo";
+    //    server.Clients.Add(c3);
+
+    //    Client c4 = new Client(null!);
+    //    c4.Connected = true;
+    //    c4.Name = "Bar";
+    //    server.Clients.Add(c4);
+
+    //    Client c5 = new Client(null!);
+    //    c5.Connected = true;
+    //    c5.Name = "Foo";
+    //    server.Clients.Add(c5);
+    //}
+
+    //TestAddClients();
+
+    if (args[0] == "*")
+        toBan = new(server.Clients.Where(c => c.Connected));
+    else
+    {
+        toBan = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
+        for (int i = 1; i < args.Length; i++)
+        {
+            string arg = args[i];
+            IEnumerable<Client> search = server.Clients.Where(c => c.Connected && 
+                (c.Name.ToLower().StartsWith(arg.ToLower()) || (Guid.TryParse(arg, out Guid res) && res == c.Id)));
+            if (!search.Any())
+                failToFind.Add(arg.ToLower()); //none found
+            else if (search.Count() > 1)
+            {
+                Client? exact = search.FirstOrDefault(x => x.Name == arg);
+                if (!ReferenceEquals(exact, null))
+                {
+                    //even though multiple matches, since exact match, it isn't ambiguous
+                    if (args[0] == "!*")
+                        toBan.Remove(exact);
+                    else
+                        toBan.Add(exact);
+                }
+                else
+                {
+                    ambig.Add((arg.ToLower(), search.Select(x => x.Name))); //more than one match
+                    foreach (var rem in search.ToList()) //need copy because can't remove from list while iterating over it
+                        toBan.Remove(rem);
+                }
+            }
+            else
+            {
+                //only one match, so autocomplete
+                if (args[0] == "!*")
+                    toBan.Remove(search.First());
+                else
+                    toBan.Add(search.First());
+            }
+        }
+    }
+
+    StringBuilder sb = new StringBuilder();
+    sb.Append(toBan.Count > 0 ? "Banned: " + string.Join(", ", toBan.Select(x => $"\"{x.Name}\"")) + "\n" : "");
+    sb.Append(failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
+    if (ambig.Count > 0)
+    {
+        ambig.ForEach(x =>
+        {
+            sb.Append($"Ambiguous for {x.arg}: {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}\n");
+        });
+        sb.Remove(sb.Length - 1, 1); //remove extra nl
+    }
+
+    foreach (Client user in toBan) {
         Task.Run(async () => {
             await user.Send(new ChangeStagePacket {
                 Id = "$agogus/banned4lyfe",
@@ -227,12 +398,8 @@ CommandHandler.RegisterCommand("ban", args => {
         });
     }
 
-    if (clients.Length > 0) {
-        Settings.SaveSettings();
-        return $"Banned {builder}.";
-    }
-
-    return "Usage: ban <usernames...>";
+    Settings.SaveSettings();
+    return sb.ToString();
 });
 
 CommandHandler.RegisterCommand("send", args => {
