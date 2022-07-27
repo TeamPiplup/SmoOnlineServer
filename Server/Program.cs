@@ -150,19 +150,17 @@ server.PacketHandler = (c, p) => {
     return true;
 };
 
-CommandHandler.RegisterCommand("rejoin", args => {
-    if (args.Length == 0) {
-        return "Usage: rejoin <* | !* (usernames to not rejoin...) | (usernames to rejoin...)>";
-    }
+(List<string> failToFind, List<Client> toActUpon, List<(string arg, IEnumerable<string> amb)> ambig) MultiUserCommandHelper(string[] args)
+{
     List<string> failToFind = new();
-    List<Client> toRejoin;
+    List<Client> toActUpon;
     List<(string arg, IEnumerable<string> amb)> ambig = new();
     if (args[0] == "*")
-        toRejoin = new(server.Clients.Where(c => c.Connected));
+        toActUpon = new(server.Clients.Where(c => c.Connected));
     else
     {
-        toRejoin = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
-        for (int i = 1; i < args.Length; i++)
+        toActUpon = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
+        for (int i = (args[0] == "!*" ? 1 : 0); i < args.Length; i++)
         {
             string arg = args[i];
             IEnumerable<Client> search = server.Clients.Where(c => c.Connected &&
@@ -176,41 +174,50 @@ CommandHandler.RegisterCommand("rejoin", args => {
                 {
                     //even though multiple matches, since exact match, it isn't ambiguous
                     if (args[0] == "!*")
-                        toRejoin.Remove(exact);
+                        toActUpon.Remove(exact);
                     else
-                        toRejoin.Add(exact);
+                        toActUpon.Add(exact);
                 }
                 else
                 {
                     ambig.Add((arg.ToLower(), search.Select(x => x.Name))); //more than one match
                     foreach (var rem in search.ToList()) //need copy because can't remove from list while iterating over it
-                        toRejoin.Remove(rem);
+                        toActUpon.Remove(rem);
                 }
             }
             else
             {
                 //only one match, so autocomplete
                 if (args[0] == "!*")
-                    toRejoin.Remove(search.First());
+                    toActUpon.Remove(search.First());
                 else
-                    toRejoin.Add(search.First());
+                    toActUpon.Add(search.First());
             }
         }
     }
+    return (failToFind, toActUpon, ambig);
+}
+
+CommandHandler.RegisterCommand("rejoin", args => {
+    if (args.Length == 0) {
+        return "Usage: rejoin <* | !* (usernames to not rejoin...) | (usernames to rejoin...)>";
+    }
+
+    var res = MultiUserCommandHelper(args);
 
     StringBuilder sb = new StringBuilder();
-    sb.Append(toRejoin.Count > 0 ? "Crashed: " + string.Join(", ", toRejoin.Select(x => $"\"{x.Name}\"")) + "\n" : "");
-    sb.Append(failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
-    if (ambig.Count > 0)
+    sb.Append(res.toActUpon.Count > 0 ? "Crashed: " + string.Join(", ", res.toActUpon.Select(x => $"\"{x.Name}\"")) + "\n" : "");
+    sb.Append(res.failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", res.failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
+    if (res.ambig.Count > 0)
     {
-        ambig.ForEach(x =>
+        res.ambig.ForEach(x =>
         {
             sb.Append($"Ambiguous for {x.arg}: {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}\n");
         });
         sb.Remove(sb.Length - 1, 1); //remove extra nl
     }
 
-    foreach (Client user in toRejoin) {
+    foreach (Client user in res.toActUpon) {
         user.Dispose();
     }
 
@@ -221,63 +228,22 @@ CommandHandler.RegisterCommand("crash", args => {
     if (args.Length == 0) {
         return "Usage: crash <* | !* (usernames to not crash...) | (usernames to crash...)>";
     }
-    List<string> failToFind = new();
-    List<Client> toCrash;
-    List<(string arg, IEnumerable<string> amb)> ambig = new();
-    if (args[0] == "*")
-        toCrash = new(server.Clients.Where(c => c.Connected));
-    else
-    {
-        toCrash = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
-        for (int i = 1; i < args.Length; i++)
-        {
-            string arg = args[i];
-            IEnumerable<Client> search = server.Clients.Where(c => c.Connected &&
-                (c.Name.ToLower().StartsWith(arg.ToLower()) || (Guid.TryParse(arg, out Guid res) && res == c.Id)));
-            if (!search.Any())
-                failToFind.Add(arg.ToLower()); //none found
-            else if (search.Count() > 1)
-            {
-                Client? exact = search.FirstOrDefault(x => x.Name == arg);
-                if (!ReferenceEquals(exact, null))
-                {
-                    //even though multiple matches, since exact match, it isn't ambiguous
-                    if (args[0] == "!*")
-                        toCrash.Remove(exact);
-                    else
-                        toCrash.Add(exact);
-                }
-                else
-                {
-                    ambig.Add((arg.ToLower(), search.Select(x => x.Name))); //more than one match
-                    foreach (var rem in search.ToList()) //need copy because can't remove from list while iterating over it
-                        toCrash.Remove(rem);
-                }
-            }
-            else
-            {
-                //only one match, so autocomplete
-                if (args[0] == "!*")
-                    toCrash.Remove(search.First());
-                else
-                    toCrash.Add(search.First());
-            }
-        }
-    }
+
+    var res = MultiUserCommandHelper(args);
 
     StringBuilder sb = new StringBuilder();
-    sb.Append(toCrash.Count > 0 ? "Crashed: " + string.Join(", ", toCrash.Select(x => $"\"{x.Name}\"")) + "\n" : "");
-    sb.Append(failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
-    if (ambig.Count > 0)
+    sb.Append(res.toActUpon.Count > 0 ? "Crashed: " + string.Join(", ", res.toActUpon.Select(x => $"\"{x.Name}\"")) + "\n" : "");
+    sb.Append(res.failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", res.failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
+    if (res.ambig.Count > 0)
     {
-        ambig.ForEach(x =>
+        res.ambig.ForEach(x =>
         {
             sb.Append($"Ambiguous for {x.arg}: {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}\n");
         });
         sb.Remove(sb.Length - 1, 1); //remove extra nl
     }
 
-    foreach (Client user in toCrash) {
+    foreach (Client user in res.toActUpon) {
         Task.Run(async () => {
             await user.Send(new ChangeStagePacket {
                 Id = "$among$us/SubArea",
@@ -296,9 +262,6 @@ CommandHandler.RegisterCommand("ban", args => {
     if (args.Length == 0) {
         return "Usage: ban <* | !* (usernames to not ban...) | (usernames to ban...)>";
     }
-    List<string> failToFind = new();
-    List<Client> toBan;
-    List<(string arg, IEnumerable<string> amb)> ambig = new();
 
     //void TestAddClients()
     //{
@@ -329,61 +292,21 @@ CommandHandler.RegisterCommand("ban", args => {
     //}
 
     //TestAddClients();
-
-    if (args[0] == "*")
-        toBan = new(server.Clients.Where(c => c.Connected));
-    else
-    {
-        toBan = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
-        for (int i = 1; i < args.Length; i++)
-        {
-            string arg = args[i];
-            IEnumerable<Client> search = server.Clients.Where(c => c.Connected && 
-                (c.Name.ToLower().StartsWith(arg.ToLower()) || (Guid.TryParse(arg, out Guid res) && res == c.Id)));
-            if (!search.Any())
-                failToFind.Add(arg.ToLower()); //none found
-            else if (search.Count() > 1)
-            {
-                Client? exact = search.FirstOrDefault(x => x.Name == arg);
-                if (!ReferenceEquals(exact, null))
-                {
-                    //even though multiple matches, since exact match, it isn't ambiguous
-                    if (args[0] == "!*")
-                        toBan.Remove(exact);
-                    else
-                        toBan.Add(exact);
-                }
-                else
-                {
-                    ambig.Add((arg.ToLower(), search.Select(x => x.Name))); //more than one match
-                    foreach (var rem in search.ToList()) //need copy because can't remove from list while iterating over it
-                        toBan.Remove(rem);
-                }
-            }
-            else
-            {
-                //only one match, so autocomplete
-                if (args[0] == "!*")
-                    toBan.Remove(search.First());
-                else
-                    toBan.Add(search.First());
-            }
-        }
-    }
+    var res = MultiUserCommandHelper(args);
 
     StringBuilder sb = new StringBuilder();
-    sb.Append(toBan.Count > 0 ? "Banned: " + string.Join(", ", toBan.Select(x => $"\"{x.Name}\"")) + "\n" : "");
-    sb.Append(failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
-    if (ambig.Count > 0)
+    sb.Append(res.toActUpon.Count > 0 ? "Banned: " + string.Join(", ", res.toActUpon.Select(x => $"\"{x.Name}\"")) + "\n" : "");
+    sb.Append(res.failToFind.Count > 0 ? "Failed to find matches for: " + string.Join(", ", res.failToFind.Select(x => $"\"{x.ToLower()}\"")) + "\n" : "");
+    if (res.ambig.Count > 0)
     {
-        ambig.ForEach(x =>
+        res.ambig.ForEach(x =>
         {
             sb.Append($"Ambiguous for {x.arg}: {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}\n");
         });
         sb.Remove(sb.Length - 1, 1); //remove extra nl
     }
 
-    foreach (Client user in toBan) {
+    foreach (Client user in res.toActUpon) {
         Task.Run(async () => {
             await user.Send(new ChangeStagePacket {
                 Id = "$agogus/banned4lyfe",
