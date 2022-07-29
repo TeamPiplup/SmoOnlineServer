@@ -196,6 +196,12 @@ server.PacketHandler = (c, p) => {
     return true;
 };
 
+#region Testing
+CommandHandler.RegisterCommand("testreallylongcommand", args => {
+    return new string('a', 7000);
+});
+#endregion
+
 (List<string> failToFind, List<Client> toActUpon, List<(string arg, IEnumerable<string> amb)> ambig) MultiUserCommandHelper(string[] args) {
     List<string> failToFind = new();
     List<Client> toActUpon;

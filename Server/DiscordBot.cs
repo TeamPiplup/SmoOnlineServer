@@ -46,6 +46,16 @@ public class DiscordBot {
         }
     }
 
+    private static List<string> SplitMessage(string message, int maxSizePerElem = 2000)
+    {
+        List<string> result = new List<string>();
+        for (int i = 0; i < message.Length; i += maxSizePerElem) 
+        {
+            result.Add(message.Substring(i, message.Length - i < maxSizePerElem ? message.Length - i : maxSizePerElem));
+        }
+        return result;
+    }
+
     private async void Log(string source, string level, string text, ConsoleColor _) {
         try {
             if (DiscordClient != null && LogChannel != null) {
