@@ -32,7 +32,10 @@ public class Server {
                 Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
 
                 try {
-                    Task.Run(() => HandleSocket(socket));
+#pragma warning disable CS4014
+                    Task.Run(() => HandleSocket(socket))
+                        .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+#pragma warning restore CS4014
                 }
                 catch (Exception e) {
                     Logger.Error($"Error occured while setting up socket handler? {e}");
@@ -55,6 +58,7 @@ public class Server {
             }
 
             Logger.Info("Server closed");
+            Console.WriteLine("\n\n\n"); //for the sake of the restart command.
         }
     }
 
@@ -170,7 +174,6 @@ public class Server {
                     ConnectPacket connect = new ConnectPacket();
                     connect.Deserialize(memory.Memory.Span[packetRange]);
                     lock (Clients) {
-                        client.Name = connect.ClientName;
                         if (Clients.Count(x => x.Connected) == Settings.Instance.Server.MaxPlayers) {
                             client.Logger.Error($"Turned away as server is at max clients");
                             memory.Dispose();
@@ -212,6 +215,7 @@ public class Server {
                                 throw new Exception($"Invalid connection type {connect.ConnectionType}");
                         }
 
+                        client.Name = connect.ClientName;
                         client.Connected = true;
                         if (firstConn) {
                             // do any cleanup required when it comes to new clients
@@ -279,8 +283,10 @@ public class Server {
                 catch (Exception e) {
                     client.Logger.Error($"Packet handler warning: {e}");
                 }
-
-                Broadcast(memory, client);
+#pragma warning disable CS4014
+                Broadcast(memory, client)
+                    .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+#pragma warning restore CS4014
             }
         }
         catch (Exception e) {
@@ -288,7 +294,12 @@ public class Server {
                 client.Logger.Info($"Disconnected from the server: Connection reset");
             } else {
                 client.Logger.Error($"Disconnecting due to exception: {e}");
-                if (socket.Connected) Task.Run(() => socket.DisconnectAsync(false));
+                if (socket.Connected) {
+#pragma warning disable CS4014
+                    Task.Run(() => socket.DisconnectAsync(false))
+                        .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+#pragma warning restore CS4014
+                }
             }
 
             memory?.Dispose();
@@ -304,7 +315,10 @@ public class Server {
         }
         catch { /*lol*/ }
 
-        Task.Run(() => Broadcast(new DisconnectPacket(), client));
+#pragma warning disable CS4014
+        Task.Run(() => Broadcast(new DisconnectPacket(), client))
+            .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+#pragma warning restore CS4014
     }
 
     private static PacketHeader GetHeader(Span<byte> data) {
