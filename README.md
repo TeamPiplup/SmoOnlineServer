@@ -29,6 +29,7 @@ cp smo.serivce /etc/systemd/system/smo.service
 # edit ExecStart to your path for the server executable and change WorkingDirectory to the server directory
 chmod +x filepath to the server executable
 systemctl enable --now smo.service
+# for TTY access i would recommand conspy but there is also reptyr, chvt
 ```
 
 ## Run docker image
@@ -78,8 +79,10 @@ Maxplayers: the max amount of players that can join, default: 8
 Flip: flips the player upside down, defaults: enabled: true, pov: both  
 Scenario: sync's scenario's for all players on the server, default: false  
 Banlist: banned people are unable to join the server, default: false  
+PersistShines/Moons: Allows the server to remember moon progress across crashes/restarts  
 
 ### Discord
+Note: Token and LogChannel needs to a string puts "" around it  
 Token: the token of the bot you want to load into, default: null  
 Prefix: the bot prefix to be used, default: $  
 LogChannel: logs the server console to that channel, default: null  
