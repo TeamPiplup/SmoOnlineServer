@@ -1,0 +1,42 @@
+name: Release job
+
+on:
+  workflow_dispatch:
+    inputs: {}
+  push:
+    branches: [ server ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 6.0.x
+
+      - name: Create output dir
+        run: "mkdir building"
+
+      - name: Publish Windows
+        run: |
+          dotnet publish Server/Server.csproj -r win-x64 -c Release --sc -p:PublishSingleFile=true -o building/windows
+      - name: Packing Windows builds
+        run: |
+          pushd building
+          7z a ../building/windows/
+          popd
+        shell: bash
+
+      - name: Publish Linux
+        run: |
+          dotnet publish Server/Server.csproj -r linux-x64 -c Release --sc -p:PublishSingleFile=true -o building/linux-x64
+          dotnet publish Server/Server.csproj -r linux-arm -c Release --sc -p:PublishSingleFile=true -o building/linux-arm
+      - name: Packing Linux builds
+        run: |
+          pushd building
+          tar -czvf ../building/linux-x64.tar.gz
+          tar -czvf ../building/linux-arm.tar.gz
+          popd
+        shell: bash
