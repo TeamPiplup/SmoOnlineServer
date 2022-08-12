@@ -43,8 +43,8 @@ jobs:
       - name: Packing Linux builds
         run: |
           pushd building
-          tar -czvf ../building/linux-x64.tar.gz
-          tar -czvf ../building/linux-arm.tar.gz
+          tar -czvf ../building/linux-x64.tar.gz linux-x64
+          tar -czvf ../building/linux-arm.tar.gz linux-arm
           popd
         shell: bash
 
