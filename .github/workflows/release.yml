@@ -32,7 +32,7 @@ jobs:
       - name: Packing Windows builds
         run: |
           pushd building
-          7z a ../building/windows/
+          7z a ../building/windows/windows-x64.zip
           popd
         shell: bash
 
@@ -54,7 +54,7 @@ jobs:
           name: ${{ steps.version_info.outputs.build_version }}
           artifacts: "building/*.tar.gz,building/*.zip"
           tag: ${{ steps.version_info.outputs.build_version }}
-          body: "Test"
+          body: "updated to match piplup's smoo server"
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
