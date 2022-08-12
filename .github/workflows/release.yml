@@ -58,4 +58,4 @@ jobs:
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.github.token }}
