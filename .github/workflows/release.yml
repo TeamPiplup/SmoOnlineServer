@@ -28,11 +28,11 @@ jobs:
 
       - name: Publish Windows
         run: |
-          dotnet publish Server/Server.csproj -r win-x64 -c Release --sc -p:PublishSingleFile=true -o building/windows
+          dotnet publish Server/Server.csproj -r win-x64 -c Release --sc -p:PublishSingleFile=true -o building/windows-x64
       - name: Packing Windows builds
         run: |
           pushd building
-          7z a ../building/windows/windows-x64.zip
+          7z a ../building/windows-x64.zip
           popd
         shell: bash
 
