@@ -58,4 +58,3 @@ jobs:
           removeArtifacts: true
           replacesArtifacts: true
           generateReleaseNotes: true
-          repo: server
