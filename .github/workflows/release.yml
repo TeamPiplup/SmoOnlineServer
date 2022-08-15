@@ -54,7 +54,7 @@ jobs:
           name: ${{ steps.version_info.outputs.build_version }}
           artifacts: "building/*.tar.gz,building/*.zip"
           tag: ${{ steps.version_info.outputs.build_version }}
-          body: "updated to match piplup's smoo server"
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
+          generateReleaseNotes: true
