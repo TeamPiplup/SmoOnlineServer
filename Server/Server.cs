@@ -308,6 +308,7 @@ public class Server {
         disconnect:
         Logger.Info($"Client {socket.RemoteEndPoint} ({client.Name}/{client.Id}) disconnected from the server");
 
+        bool wasConnected = client.Connected;
         // Clients.Remove(client)
         client.Connected = false;
         try {
@@ -316,8 +317,10 @@ public class Server {
         catch { /*lol*/ }
 
 #pragma warning disable CS4014
-        Task.Run(() => Broadcast(new DisconnectPacket(), client))
-            .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+        if (wasConnected) {
+            Task.Run(() => Broadcast(new DisconnectPacket(), client))
+                .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+        }
 #pragma warning restore CS4014
     }
 
