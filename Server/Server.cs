@@ -127,6 +127,7 @@ public class Server {
 
     private async void HandleSocket(Socket socket) {
         Client client = new Client(socket) {Server = this};
+        var remote = socket.RemoteEndPoint;
         IMemoryOwner<byte> memory = null!;
         await client.Send(new InitPacket {
             MaxPlayers = Settings.Instance.Server.MaxPlayers
@@ -142,7 +143,7 @@ public class Server {
                         int size = await socket.ReceiveAsync(readMem[readOffset..readSize], SocketFlags.None);
                         if (size == 0) {
                             // treat it as a disconnect and exit
-                            Logger.Info($"Socket {socket.RemoteEndPoint} disconnected.");
+                            Logger.Info($"Socket {remote} disconnected.");
                             if (socket.Connected) await socket.DisconnectAsync(false);
                             return false;
                         }
@@ -180,32 +181,21 @@ public class Server {
                             goto disconnect;
                         }
 
-                        bool firstConn = false;
+                        bool firstConn = true;
                         switch (connect.ConnectionType) {
-                            case ConnectPacket.ConnectionTypes.FirstConnection: {
-                                firstConn = true;
-                                if (FindExistingClient(header.Id) is { } newClient) {
-                                    if (newClient.Connected) {
-                                        newClient.Logger.Info($"Disconnecting already connected client {newClient.Socket?.RemoteEndPoint} for {client.Socket?.RemoteEndPoint}");
-                                        newClient.Dispose();
-                                    }
-                                    newClient.Socket = client.Socket;
-                                    client = newClient;
-                                }
-
-                                break;
-                            }
+                            case ConnectPacket.ConnectionTypes.FirstConnection:
                             case ConnectPacket.ConnectionTypes.Reconnecting: {
                                 client.Id = header.Id;
-                                if (FindExistingClient(header.Id) is { } newClient) {
-                                    if (newClient.Connected) {
-                                        newClient.Logger.Info($"Disconnecting already connected client {newClient.Socket?.RemoteEndPoint} for {client.Socket?.RemoteEndPoint}");
-                                        newClient.Dispose();
+                                if (FindExistingClient(header.Id) is { } oldClient) {
+                                    firstConn = false;
+                                    client = new Client(oldClient, socket);
+                                    Clients.Remove(oldClient);
+                                    Clients.Add(client);
+                                    if (oldClient.Connected) {
+                                        oldClient.Logger.Info($"Disconnecting already connected client {oldClient.Socket?.RemoteEndPoint} for {client.Socket?.RemoteEndPoint}");
+                                        oldClient.Dispose();
                                     }
-                                    newClient.Socket = client.Socket;
-                                    client = newClient;
                                 } else {
-                                    firstConn = true;
                                     connect.ConnectionType = ConnectPacket.ConnectionTypes.FirstConnection;
                                 }
 
@@ -222,7 +212,6 @@ public class Server {
                             List<Client> toDisconnect = Clients.FindAll(c => c.Id == header.Id && c.Connected && c.Socket != null);
                             Clients.RemoveAll(c => c.Id == header.Id);
 
-                            client.Id = header.Id;
                             Clients.Add(client);
 
                             Parallel.ForEachAsync(toDisconnect, (c, token) => c.Socket!.DisconnectAsync(false, token));
@@ -259,17 +248,9 @@ public class Server {
                         tempBuffer.Dispose();
                     });
 
-                    Logger.Info($"Client {client.Name} ({client.Id}/{socket.RemoteEndPoint}) connected.");
+                    Logger.Info($"Client {client.Name} ({client.Id}/{remote}) connected.");
                 } else if (header.Id != client.Id && client.Id != Guid.Empty) {
                     throw new Exception($"Client {client.Name} sent packet with invalid client id {header.Id} instead of {client.Id}");
-                }
-
-                if (header.Type == PacketType.Costume) {
-                    CostumePacket costumePacket = new CostumePacket {
-                        BodyName = ""
-                    };
-                    costumePacket.Deserialize(memory.Memory.Span[Constants.HeaderSize..(Constants.HeaderSize + costumePacket.Size)]);
-                    client.CurrentCostume = costumePacket;
                 }
 
                 try {
@@ -306,7 +287,12 @@ public class Server {
         }
 
         disconnect:
-        Logger.Info($"Client {socket.RemoteEndPoint} ({client.Name}/{client.Id}) disconnected from the server");
+        if (client.Name != "Unknown User" && client.Id != Guid.Parse("00000000-0000-0000-0000-000000000000")) {
+            Logger.Info($"Client {remote} ({client.Name}/{client.Id}) disconnected from the server");
+        }
+        else {
+            Logger.Info($"Client {remote} disconnected from the server");
+        }
 
         bool wasConnected = client.Connected;
         // Clients.Remove(client)
