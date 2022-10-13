@@ -1,15 +1,12 @@
-﻿#define SEND_RESP_TO_BAD_REQ //should the bot send a message to people who attempt to run a command from an invalid location? (Comment out to disable)
-#define LOG_BAD_REQ //should the bot log aformentioned invalid requests?
-#define LOG_CHANNELS_ON_COMMAND_ATTEMPT_VERBOSE //print a message describing relevant channel ids whenever a command is attempted to be sent?
-
-using DSharpPlus;
+﻿using DSharpPlus;
 using DSharpPlus.Entities;
 using Microsoft.Extensions.Logging;
 using Shared;
 
 namespace Server;
 
-public class DiscordBot {
+public class DiscordBot
+{
     private DiscordClient? DiscordClient;
     private string? Token;
     private Settings.DiscordTable Config => Settings.Instance.Discord;
@@ -19,9 +16,8 @@ public class DiscordBot {
     private DiscordChannel? LogChannel;
     private bool Reconnecting;
 
-    private bool warnedAboutNullLogChannel = false; //print warning message
-
-    public DiscordBot() {
+    public DiscordBot()
+    {
         Token = Config.Token;
         Logger.AddLogHandler(Log);
         CommandHandler.RegisterCommand("dscrestart", _ => {
@@ -38,43 +34,75 @@ public class DiscordBot {
         Settings.LoadHandler += SettingsLoadHandler;
     }
 
-    private async Task Reconnect() {
-        warnedAboutNullLogChannel = false;
+    private async Task Reconnect()
+    {
         if (DiscordClient != null) // usually null prop works, not here though...`
             await DiscordClient.DisconnectAsync();
         await Run();
     }
 
-    private async void SettingsLoadHandler() {
-        try {
-            if (DiscordClient == null || Token != Config.Token)
-                await Run();
-            if (Config.LogChannel != null)
-                LogChannel = await (DiscordClient?.GetChannelAsync(ulong.Parse(Config.LogChannel)) ??
-                                    throw new NullReferenceException("Discord client not setup yet!"));
-        } catch (Exception e) {
-            Logger.Error($"Failed to get log channel \"{Config.LogChannel}\"");
-            Logger.Error(e);
+    private async void SettingsLoadHandler()
+    {
+        if (DiscordClient == null || Token != Config.Token)
+        {
+            await Run();
+        }
+
+        if (DiscordClient == null)
+        {
+            Logger.Error(new NullReferenceException("Discord client not setup yet!"));
+            return;
+        }
+
+        if (Config.CommandChannel != null)
+        {
+            try
+            {
+                CommandChannel = await DiscordClient.GetChannelAsync(ulong.Parse(Config.CommandChannel));
+            }
+            catch (Exception e)
+            {
+                Logger.Error($"Failed to get command channel \"{Config.CommandChannel}\"");
+                Logger.Error(e);
+            }
+        }
+
+        if (Config.LogChannel != null)
+        {
+            try
+            {
+                LogChannel = await DiscordClient.GetChannelAsync(ulong.Parse(Config.LogChannel));
+            }
+            catch (Exception e)
+            {
+                Logger.Error($"Failed to get log channel \"{Config.LogChannel}\"");
+                Logger.Error(e);
+            }
         }
     }
 
     private static List<string> SplitMessage(string message, int maxSizePerElem = 2000)
     {
         List<string> result = new List<string>();
-        for (int i = 0; i < message.Length; i += maxSizePerElem) 
+        for (int i = 0; i < message.Length; i += maxSizePerElem)
         {
             result.Add(message.Substring(i, message.Length - i < maxSizePerElem ? message.Length - i : maxSizePerElem));
         }
         return result;
     }
 
-    private async void Log(string source, string level, string text, ConsoleColor _) {
-        try {
-            if (DiscordClient != null && LogChannel != null) {
+    private async void Log(string source, string level, string text, ConsoleColor _)
+    {
+        try
+        {
+            if (DiscordClient != null && LogChannel != null)
+            {
                 foreach (string mesg in SplitMessage(Logger.PrefixNewLines(text, $"{level} [{source}]"), 1994)) //room for 6 '`'
                     await DiscordClient.SendMessageAsync(LogChannel, $"```{mesg}```");
             }
-        } catch (Exception e) {
+        }
+        catch (Exception e)
+        {
             // don't log again, it'll just stack overflow the server!
             if (Reconnecting) return; // skip if reconnecting
             await Console.Error.WriteLineAsync("Exception in discord logger");
@@ -82,16 +110,20 @@ public class DiscordBot {
         }
     }
 
-    public async Task Run() {
+    public async Task Run()
+    {
         Token = Config.Token;
         DiscordClient?.Dispose();
-        if (Config.Token == null) {
+        if (Config.Token == null)
+        {
             DiscordClient = null;
             return;
         }
 
-        try {
-            DiscordClient = new DiscordClient(new DiscordConfiguration {
+        try
+        {
+            DiscordClient = new DiscordClient(new DiscordConfiguration
+            {
                 Token = Config.Token,
                 MinimumLogLevel = LogLevel.None
             });
@@ -102,17 +134,32 @@ public class DiscordBot {
             Reconnecting = false;
             string mentionPrefix = $"{DiscordClient.CurrentUser.Mention}";
             DiscordClient.MessageCreated += async (_, args) => {
-                if (args.Author.IsCurrent) return;
-                try {
+                if (args.Author.IsCurrent) return; //dont respond to commands from ourselves (prevent "sql-injection" esq attacks)
+                //prevent commands via dm and non-public channels
+                if (CommandChannel == null)
+                {
+                    if (args.Channel is DiscordDmChannel)
+                        return; //no dm'ing the bot allowed!
+                }
+                else if (args.Channel.Id != CommandChannel.Id && (LogChannel != null && args.Channel.Id != LogChannel.Id))
+                    return;
+                //run command
+                try
+                {
                     DiscordMessage msg = args.Message;
                     string? resp = null;
-                    if (string.IsNullOrEmpty(Prefix)) {
+                    if (string.IsNullOrEmpty(Prefix))
+                    {
                         await msg.Channel.TriggerTypingAsync();
                         resp = string.Join('\n', CommandHandler.GetResult(msg.Content).ReturnStrings);
-                    } else if (msg.Content.StartsWith(Prefix)) {
+                    }
+                    else if (msg.Content.StartsWith(Prefix))
+                    {
                         await msg.Channel.TriggerTypingAsync();
                         resp = string.Join('\n', CommandHandler.GetResult(msg.Content[Prefix.Length..]).ReturnStrings);
-                    } else if (msg.Content.StartsWith(mentionPrefix)) {
+                    }
+                    else if (msg.Content.StartsWith(mentionPrefix))
+                    {
                         await msg.Channel.TriggerTypingAsync();
                         resp = string.Join('\n', CommandHandler.GetResult(msg.Content[mentionPrefix.Length..].TrimStart()).ReturnStrings);
                     }
@@ -121,7 +168,9 @@ public class DiscordBot {
                         foreach (string mesg in SplitMessage(resp))
                             await msg.RespondAsync(mesg);
                     }
-                } catch (Exception e) {
+                }
+                catch (Exception e)
+                {
                     Logger.Error(e);
                 }
             };
@@ -135,7 +184,9 @@ public class DiscordBot {
                 Logger.Error(args.Exception);
                 return Task.CompletedTask;
             };
-        } catch (Exception e) {
+        }
+        catch (Exception e)
+        {
             Logger.Error("Exception occurred in discord runner!");
             Logger.Error(e);
         }
