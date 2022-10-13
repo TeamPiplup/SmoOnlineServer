@@ -26,6 +26,10 @@ public class DiscordBot
             Task.Run(Reconnect);
             return "Restarting Discord bot";
         });
+        CommandHandler.RegisterCommand("printdiscinfo", _ =>
+        {
+            return $"comm: \"{Config.CommandChannel}\", log: \"{Config.LogChannel}\", pref: \"{Prefix}\"";
+        });
         if (Config.Token == null) return;
         if (Config.CommandChannel == null)
             Logger.Warn("You probably should set your CommandChannel in settings.json");
