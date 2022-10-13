@@ -1,19 +1,20 @@
-﻿using DSharpPlus;
-using DSharpPlus.Entities;
-using Microsoft.Extensions.Logging;
+﻿using System.Buffers;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using Shared;
+using Shared.Packet;
+using Shared.Packet.Packets;
 
 namespace Server;
 
-public class DiscordBot {
-    private DiscordClient? DiscordClient;
-    private string? Token;
-    private Settings.DiscordTable Config => Settings.Instance.Discord;
-    private string Prefix => Config.Prefix;
-    private readonly Logger Logger = new Logger("Discord");
-    private DiscordChannel? CommandChannel;
-    private DiscordChannel? LogChannel;
-    private bool Reconnecting;
+public class Server {
+    public readonly List<Client> Clients = new List<Client>();
+    public IEnumerable<Client> ClientsConnected => Clients.Where(client => client.Metadata.ContainsKey("lastGamePacket") && client.Connected);
+    public readonly Logger Logger = new Logger("Server");
+    private readonly MemoryPool<byte> memoryPool = MemoryPool<byte>.Shared;
+    public Func<Client, IPacket, bool>? PacketHandler = null!;
+    public event Action<Client, ConnectPacket> ClientJoined = null!;
 
     public async Task Listen(CancellationToken? token = null) {
         Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -211,7 +212,6 @@ public class DiscordBot {
                             List<Client> toDisconnect = Clients.FindAll(c => c.Id == header.Id && c.Connected && c.Socket != null);
                             Clients.RemoveAll(c => c.Id == header.Id);
 
-                            client.Id = header.Id;
                             Clients.Add(client);
 
                             Parallel.ForEachAsync(toDisconnect, (c, token) => c.Socket!.DisconnectAsync(false, token));
@@ -248,17 +248,9 @@ public class DiscordBot {
                         tempBuffer.Dispose();
                     });
 
-                    Logger.Info($"Client {client.Name} ({client.Id}/{socket.RemoteEndPoint}) connected.");
+                    Logger.Info($"Client {client.Name} ({client.Id}/{remote}) connected.");
                 } else if (header.Id != client.Id && client.Id != Guid.Empty) {
                     throw new Exception($"Client {client.Name} sent packet with invalid client id {header.Id} instead of {client.Id}");
-                }
-
-                if (header.Type == PacketType.Costume) {
-                    CostumePacket costumePacket = new CostumePacket {
-                        BodyName = ""
-                    };
-                    costumePacket.Deserialize(memory.Memory.Span[Constants.HeaderSize..(Constants.HeaderSize + costumePacket.Size)]);
-                    client.CurrentCostume = costumePacket;
                 }
 
                 try {
@@ -295,8 +287,14 @@ public class DiscordBot {
         }
 
         disconnect:
-        Logger.Info($"Client {socket.RemoteEndPoint} ({client.Name}/{client.Id}) disconnected from the server");
+        if (client.Name != "Unknown User" && client.Id != Guid.Parse("00000000-0000-0000-0000-000000000000")) {
+            Logger.Info($"Client {remote} ({client.Name}/{client.Id}) disconnected from the server");
+        }
+        else {
+            Logger.Info($"Client {remote} disconnected from the server");
+        }
 
+        bool wasConnected = client.Connected;
         // Clients.Remove(client)
         client.Connected = false;
         try {
@@ -305,8 +303,10 @@ public class DiscordBot {
         catch { /*lol*/ }
 
 #pragma warning disable CS4014
-        Task.Run(() => Broadcast(new DisconnectPacket(), client))
-            .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+        if (wasConnected) {
+            Task.Run(() => Broadcast(new DisconnectPacket(), client))
+                .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
+        }
 #pragma warning restore CS4014
     }
 
