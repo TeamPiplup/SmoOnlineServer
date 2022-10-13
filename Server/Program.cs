@@ -12,7 +12,6 @@ Server.Server server = new Server.Server();
 HashSet<int> shineBag = new HashSet<int>();
 CancellationTokenSource cts = new CancellationTokenSource();
 bool restartRequested = false;
-Task listenTask = server.Listen(cts.Token);
 Logger consoleLogger = new Logger("Console");
 DiscordBot bot = new DiscordBot();
 await bot.Run();
@@ -48,6 +47,10 @@ async Task LoadShines()
         var loadedShines = JsonSerializer.Deserialize<HashSet<int>>(shineJson);
 
         if (loadedShines is not null) shineBag = loadedShines;
+    }
+    catch (FileNotFoundException)
+    {
+        // Ignore
     }
     catch (Exception ex)
     {
@@ -123,9 +126,6 @@ server.PacketHandler = (c, p) => {
                     c.Metadata["speedrun"] = true;
                     ((ConcurrentBag<int>) (c.Metadata["shineSync"] ??= new ConcurrentBag<int>())).Clear();
                     shineBag.Clear();
-                    Task.Run(async () => {
-                        await PersistShines();
-                    });
                     c.Logger.Info("Entered Cap on new save, preventing moon sync until Cascade");
                     break;
                 case "WaterfallWorldHomeStage":
@@ -153,18 +153,23 @@ server.PacketHandler = (c, p) => {
 
             break;
         }
+
         case TagPacket tagPacket: {
             if ((tagPacket.UpdateType & TagPacket.TagUpdate.State) != 0) c.Metadata["seeking"] = tagPacket.IsIt;
             if ((tagPacket.UpdateType & TagPacket.TagUpdate.Time) != 0)
                 c.Metadata["time"] = new Time(tagPacket.Minutes, tagPacket.Seconds, DateTime.Now);
             break;
         }
-        case CostumePacket:
+
+        case CostumePacket costumePacket:
+            c.Logger.Info($"Got costume packet: {costumePacket.BodyName}, {costumePacket.CapName}");
+            c.CurrentCostume = costumePacket;
 #pragma warning disable CS4014
             ClientSyncShineBag(c); //no point logging since entire def has try/catch
 #pragma warning restore CS4014
             c.Metadata["loadedSave"] = true;
             break;
+
         case ShinePacket shinePacket: {
             if (c.Metadata["loadedSave"] is false) break;
             ConcurrentBag<int> playerBag = (ConcurrentBag<int>)c.Metadata["shineSync"]!;
@@ -175,6 +180,7 @@ server.PacketHandler = (c, p) => {
             SyncShineBag();
             break;
         }
+
         case PlayerPacket playerPacket when Settings.Instance.Flip.Enabled
                                             && Settings.Instance.Flip.Pov is FlipOptions.Both or FlipOptions.Others
                                             && Settings.Instance.Flip.Players.Contains(c.Id): {
@@ -205,7 +211,7 @@ server.PacketHandler = (c, p) => {
         }
     }
 
-    return true;
+    return true; // Broadcast packet to all other clients
 };
 
 (HashSet<string> failToFind, HashSet<Client> toActUpon, List<(string arg, IEnumerable<string> amb)> ambig) MultiUserCommandHelper(string[] args) {
@@ -569,6 +575,10 @@ CommandHandler.RegisterCommand("shine", args => {
             return $"Shines: {string.Join(", ", shineBag)}";
         case "clear" when args.Length == 1:
             shineBag.Clear();
+            Task.Run(async () => {
+                await PersistShines();
+            });
+
             foreach (ConcurrentBag<int> playerBag in server.Clients.Select(serverClient =>
                 (ConcurrentBag<int>)serverClient.Metadata["shineSync"]!)) playerBag?.Clear();
 
@@ -649,7 +659,8 @@ Task.Run(() => {
 }).ContinueWith(x => { if (x.Exception != null) { consoleLogger.Error(x.Exception.ToString()); } });
 #pragma warning restore CS4014
 
-await listenTask;
+await server.Listen(cts.Token);
+
 if (restartRequested) //need to do this here because this needs to happen after the listener closes, and there isn't an
                       //easy way to sync in the restartserver command without it exiting Main()
 {
