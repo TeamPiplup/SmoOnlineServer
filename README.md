@@ -3,7 +3,7 @@
 [Are you looking for the Offical Super Mario Odyssey Online Server?](https://github.com/Sanae6/SmoOnlineServer)
 
 ## Branches
- [Releases](https://github.com/TeamPiplup/SmoOnlineServer/releases) [![Release job](https://github.com/TeamPiplup/SmoOnlineServer/actions/workflows/release.yml/badge.svg?branch=server)](https://github.com/TeamPiplup/SmoOnlineServer/actions/workflows/release.yml)
+ - [Releases](https://github.com/TeamPiplup/SmoOnlineServer/releases)
  - [upstream](https://github.com/TeamPiplup/SmoOnlineServer/tree/upstream) - upstream is the master branch
  - [packet-fixes](https://github.com/TeamPiplup/SmoOnlineServer/tree/packet-fixes) - packet-fixes contains the fixes for ryujinx
  - any other branch will be a testing branch you can build(although i don't recommand it)
