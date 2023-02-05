@@ -57,4 +57,4 @@ jobs:
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
-          generateReleaseNotes: true
+          generateReleaseNotes: false
