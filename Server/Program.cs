@@ -87,10 +87,11 @@ async Task ClientSyncShineBag(Client client) {
         if ((bool?) client.Metadata["speedrun"] ?? false) return;
         ConcurrentBag<int> clientBag = (ConcurrentBag<int>) (client.Metadata["shineSync"] ??= new ConcurrentBag<int>());
         foreach (int shine in shineBag.Except(clientBag).ToArray()) {
-            clientBag.Add(shine);
+            if (!client.Connected) return;
             await client.Send(new ShinePacket {
                 ShineId = shine
             });
+            clientBag.Add(shine);
         }
     } catch {
         // errors that can happen when sending will crash the server :)
@@ -100,7 +101,7 @@ async Task ClientSyncShineBag(Client client) {
 async void SyncShineBag() {
     try {
         await PersistShines();
-        await Parallel.ForEachAsync(server.Clients.ToArray(), async (client, _) => await ClientSyncShineBag(client));
+        await Parallel.ForEachAsync(server.ClientsConnected.ToArray(), async (client, _) => await ClientSyncShineBag(client));
     } catch {
         // errors that can happen shines change will crash the server :)
     }
@@ -171,6 +172,7 @@ server.PacketHandler = (c, p) => {
             break;
 
         case ShinePacket shinePacket: {
+            if (!Settings.Instance.Shines.Enabled) return false;
             if (c.Metadata["loadedSave"] is false) break;
             ConcurrentBag<int> playerBag = (ConcurrentBag<int>)c.Metadata["shineSync"]!;
             shineBag.Add(shinePacket.ShineId);
@@ -347,19 +349,16 @@ CommandHandler.RegisterCommand("ban", args => {
 
 CommandHandler.RegisterCommand("send", args => {
     const string optionUsage = "Usage: send <stage> <id> <scenario[-1..127]> <player/*>";
-    if (args.Length < 4)
+    if (args.Length < 4) {
         return optionUsage;
+    }
 
-    string stage = args[0];
+    string? stage = Stages.Input2Stage(args[0]);
+    if (stage == null) {
+        return "Invalid Stage Name! ```" + Stages.KingdomAliasMapping() + "```";
+    }
+
     string id = args[1];
-
-    if (Constants.MapNames.TryGetValue(stage.ToLower(), out string? mapName)) {
-        stage = mapName;
-    }
-
-    if (!stage.Contains("Stage") && !stage.Contains("Zone")) {
-        return "Invalid Stage Name! ```cap  ->  Cap Kingdom\ncascade  ->  Cascade Kingdom\nsand  ->  Sand Kingdom\nlake  ->  Lake Kingdom\nwooded  ->  Wooded Kingdom\ncloud  ->  Cloud Kingdom\nlost  ->  Lost Kingdom\nmetro  ->  Metro Kingdom\nsea  ->  Sea Kingdom\nsnow  ->  Snow Kingdom\nlunch  ->  Luncheon Kingdom\nruined  ->  Ruined Kingdom\nbowser  ->  Bowser's Kingdom\nmoon  ->  Moon Kingdom\nmush  ->  Mushroom Kingdom\ndark  ->  Dark Side\ndarker  ->  Darker Side```";
-    }
 
     if (!sbyte.TryParse(args[2], out sbyte scenario) || scenario < -1)
         return $"Invalid scenario number {args[2]} (range: [-1 to 127])";
@@ -382,17 +381,13 @@ CommandHandler.RegisterCommand("send", args => {
 
 CommandHandler.RegisterCommand("sendall", args => {
     const string optionUsage = "Usage: sendall <stage>";
-    if (args.Length < 1)
+    if (args.Length < 1) {
         return optionUsage;
-
-    string stage = args[0];
-
-    if (Constants.MapNames.TryGetValue(stage.ToLower(), out string? mapName)) {
-        stage = mapName;
     }
 
-    if (!stage.Contains("Stage") && !stage.Contains("Zone")) {
-        return "Invalid Stage Name! ```cap  ->  Cap Kingdom\ncascade  ->  Cascade Kingdom\nsand  ->  Sand Kingdom\nlake  ->  Lake Kingdom\nwooded  ->  Wooded Kingdom\ncloud  ->  Cloud Kingdom\nlost  ->  Lost Kingdom\nmetro  ->  Metro Kingdom\nsea  ->  Sea Kingdom\nsnow  ->  Snow Kingdom\nlunch  ->  Luncheon Kingdom\nruined  ->  Ruined Kingdom\nbowser  ->  Bowser's Kingdom\nmoon  ->  Moon Kingdom\nmush  ->  Mushroom Kingdom\ndark  ->  Dark Side\ndarker  ->  Darker Side```";
+    string? stage = Stages.Input2Stage(args[0]);
+    if (stage == null) {
+        return "Invalid Stage Name! ```" + Stages.KingdomAliasMapping() + "```";
     }
 
     Client[] players = server.Clients.Where(c => c.Connected).ToArray();
