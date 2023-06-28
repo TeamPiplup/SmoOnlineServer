@@ -2,6 +2,7 @@ using Shared;
 using Shared.Packet.Packets;
 using System.Dynamic;
 using System.Net;
+using System.Numerics;
 using System.Text.Json.Serialization;
 
 namespace Server.JsonApi;
@@ -92,7 +93,12 @@ public static class ApiRequestStatus {
             ["Status/Players/Kingdom"]  = (dynamic p, Client c) => p.Kingdom  = Player.GetKingdom(c),
             ["Status/Players/Stage"]    = (dynamic p, Client c) => p.Stage    = Player.GetGamePacket(c)?.Stage ?? null,
             ["Status/Players/Scenario"] = (dynamic p, Client c) => p.Scenario = Player.GetGamePacket(c)?.ScenarioNum ?? null,
+            ["Status/Players/Position"] = (dynamic p, Client c) => p.Position = Position.FromVector3(Player.GetPlayerPacket(c)?.Position ?? null),
+            ["Status/Players/Rotation"] = (dynamic p, Client c) => p.Rotation = Rotation.FromQuaternion(Player.GetPlayerPacket(c)?.Rotation ?? null),
+            ["Status/Players/Tagged"]   = (dynamic p, Client c) => p.Tagged   = Player.GetTagged(c),
             ["Status/Players/Costume"]  = (dynamic p, Client c) => p.Costume  = Costume.FromClient(c),
+            ["Status/Players/Capture"]  = (dynamic p, Client c) => p.Capture  = Player.GetCapture(c),
+            ["Status/Players/Is2D"]     = (dynamic p, Client c) => p.Is2D     = Player.GetGamePacket(c)?.Is2d ?? null,
             ["Status/Players/IPv4"]     = (dynamic p, Client c) => p.IPv4     = (c.Socket?.RemoteEndPoint as IPEndPoint)?.Address.ToString(),
         };
 
@@ -119,6 +125,32 @@ public static class ApiRequestStatus {
             c.Metadata.TryGetValue("lastGamePacket", out lastGamePacket);
             if (lastGamePacket == null) { return null; }
             return (GamePacket) lastGamePacket;
+        }
+
+
+        private static PlayerPacket? GetPlayerPacket(Client c) {
+            object? lastPlayerPacket = null;
+            c.Metadata.TryGetValue("lastPlayerPacket", out lastPlayerPacket);
+            if (lastPlayerPacket == null) { return null; }
+            return (PlayerPacket) lastPlayerPacket;
+        }
+
+
+        private static bool? GetTagged(Client c) {
+            object? lastTagPacket = null;
+            c.Metadata.TryGetValue("lastTagPacket", out lastTagPacket);
+            if (lastTagPacket == null) { return null; }
+            return ((TagPacket) lastTagPacket).IsIt;
+        }
+
+
+        private static string? GetCapture(Client c) {
+            object? lastCapturePacket = null;
+            c.Metadata.TryGetValue("lastCapturePacket", out lastCapturePacket);
+            if (lastCapturePacket == null) { return null; }
+            CapturePacket p = (CapturePacket) lastCapturePacket;
+            if (p.ModelName == "") { return null; }
+            return p.ModelName;
         }
 
 
@@ -153,6 +185,47 @@ public static class ApiRequestStatus {
             if (c.CurrentCostume == null) { return null; }
             CostumePacket p = (CostumePacket) c.CurrentCostume!;
             return new Costume(p);
+        }
+    }
+
+
+    private class Position {
+        public float X { get; private set; }
+        public float Y { get; private set; }
+        public float Z { get; private set; }
+
+
+        private Position(float X, float Y, float Z) {
+            this.X = X;
+            this.Y = Y;
+            this.Z = Z;
+        }
+
+        public static Position? FromVector3(Vector3? pos) {
+            if (pos == null) { return null; }
+            Vector3 p = (Vector3) pos;
+            return new Position(p.X, p.Y, p.Z);
+        }
+    }
+
+
+    private class Rotation {
+        public float W { get; private set; }
+        public float X { get; private set; }
+        public float Y { get; private set; }
+        public float Z { get; private set; }
+
+        private Rotation(float W, float X, float Y, float Z) {
+            this.W = W;
+            this.X = X;
+            this.Y = Y;
+            this.Z = Z;
+        }
+
+        public static Rotation? FromQuaternion(Quaternion? quat) {
+            if (quat == null) { return null; }
+            Quaternion q = (Quaternion) quat;
+            return new Rotation(q.W, q.X, q.Y, q.Z);
         }
     }
 }
