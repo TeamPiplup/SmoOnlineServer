@@ -35,7 +35,12 @@ The possible player status permissions are hardcoded though:
 - `Status/Players/Kingdom`
 - `Status/Players/Stage`
 - `Status/Players/Scenario`
+- `Status/Players/Position`
+- `Status/Players/Rotation`
+- `Status/Players/Tagged`
 - `Status/Players/Costume`
+- `Status/Players/Capture`
+- `Status/Players/Is2D`
 - `Status/Players/IPv4`
 
 ---
