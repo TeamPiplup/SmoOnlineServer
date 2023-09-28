@@ -1,7 +1,12 @@
 # Super Mario Odyssey: Online Server
 
-The official server for the [Super Mario Odyssey: Online](https://github.com/CraftyBoss/SuperMarioOdysseyOnline) mod.
+[Are you looking for the Offical Super Mario Odyssey Online Server?](https://github.com/Sanae6/SmoOnlineServer)
 
+## Branches
+ - [Releases](https://github.com/TeamPiplup/SmoOnlineServer/releases)
+ - [upstream](https://github.com/TeamPiplup/SmoOnlineServer/tree/upstream) - upstream is the master branch
+ - [packet-fixes](https://github.com/TeamPiplup/SmoOnlineServer/tree/packet-fixes) - packet-fixes contains the fixes for ryujinx
+ - any other branch will be a testing branch you can build(although i don't recommand it)
 
 ## Windows Setup
 
@@ -61,28 +66,3 @@ docker-compose logs --tail=20 --follow
 # stop server
 docker-compose stop
 ```
-
-## Commands
-
-Run `help` to get what commands are available in the server console.
-Run the `loadsettings` command in the console to update the settings without restarting.
-Server address and port will require a server restart, but everything else should update when you run `loadsettings`.
-
-[//]: # (TODO: Document all commands, possibly rename them too.)
-
-## Settings
-
-### Server
-Address: the ip address of the server, default: 0.0.0.0 # this shouldn't be changed  
-Port: the port of the server, default 1027  
-Maxplayers: the max amount of players that can join, default: 8  
-Flip: flips the player upside down, defaults: enabled: true, pov: both  
-Scenario: sync's scenario's for all players on the server, default: false  
-Banlist: banned people are unable to join the server, default: false  
-PersistShines/Moons: Allows the server to remember moon progress across crashes/restarts  
-
-### Discord
-Note: Token and LogChannel needs to a string puts "" around it  
-Token: the token of the bot you want to load into, default: null  
-Prefix: the bot prefix to be used, default: $  
-LogChannel: logs the server console to that channel, default: null  
