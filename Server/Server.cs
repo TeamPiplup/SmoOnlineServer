@@ -1,20 +1,19 @@
-﻿using System.Buffers;
-using System.Net;
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
+﻿using DSharpPlus;
+using DSharpPlus.Entities;
+using Microsoft.Extensions.Logging;
 using Shared;
-using Shared.Packet;
-using Shared.Packet.Packets;
 
 namespace Server;
 
-public class Server {
-    public readonly List<Client> Clients = new List<Client>();
-    public IEnumerable<Client> ClientsConnected => Clients.Where(client => client.Metadata.ContainsKey("lastGamePacket") && client.Connected);
-    public readonly Logger Logger = new Logger("Server");
-    private readonly MemoryPool<byte> memoryPool = MemoryPool<byte>.Shared;
-    public Func<Client, IPacket, bool>? PacketHandler = null!;
-    public event Action<Client, ConnectPacket> ClientJoined = null!;
+public class DiscordBot {
+    private DiscordClient? DiscordClient;
+    private string? Token;
+    private Settings.DiscordTable Config => Settings.Instance.Discord;
+    private string Prefix => Config.Prefix;
+    private readonly Logger Logger = new Logger("Discord");
+    private DiscordChannel? CommandChannel;
+    private DiscordChannel? LogChannel;
+    private bool Reconnecting;
 
     public async Task Listen(CancellationToken? token = null) {
         Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -29,15 +28,7 @@ public class Server {
                 Socket socket = token.HasValue ? await serverSocket.AcceptAsync(token.Value) : await serverSocket.AcceptAsync();
                 socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
 
-                if (BanLists.Enabled && BanLists.IsIPv4Banned(((IPEndPoint) socket.RemoteEndPoint!).Address!)) {
-                    Logger.Warn($"Ignoring banned IPv4 address {socket.RemoteEndPoint}");
-                    continue;
-                }
-
                 Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
-                if (! Settings.Instance.JsonApi.Enabled) {
-                    Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
-                }
 
                 try {
 #pragma warning disable CS4014
@@ -72,7 +63,7 @@ public class Server {
 
     public static void FillPacket<T>(PacketHeader header, T packet, Memory<byte> memory) where T : struct, IPacket {
         Span<byte> data = memory.Span;
-
+        
         header.Serialize(data[..Constants.HeaderSize]);
         packet.Serialize(data[Constants.HeaderSize..]);
     }
@@ -165,8 +156,6 @@ public class Server {
                 if (!await Read(memory.Memory[..Constants.HeaderSize], Constants.HeaderSize, 0))
                     break;
                 PacketHeader header = GetHeader(memory.Memory.Span[..Constants.HeaderSize]);
-                if (first && await JsonApi.JsonApi.HandleAPIRequest(this, socket, header, memory)) { goto close; }
-
                 Range packetRange = Constants.HeaderSize..(Constants.HeaderSize + header.PacketSize);
                 if (header.PacketSize > 0) {
                     IMemoryOwner<byte> memTemp = memory; // header to copy to new memory
@@ -177,11 +166,6 @@ public class Server {
                         break;
                 }
 
-                if (client.Ignored) {
-                    memory.Dispose();
-                    continue;
-                }
-
                 // connection initialization
                 if (first) {
                     first = false;
@@ -189,8 +173,6 @@ public class Server {
 
                     ConnectPacket connect = new ConnectPacket();
                     connect.Deserialize(memory.Memory.Span[packetRange]);
-                    bool wasFirst = connect.ConnectionType == ConnectPacket.ConnectionTypes.FirstConnection;
-
                     lock (Clients) {
                         if (Clients.Count(x => x.Connected) == Settings.Instance.Server.MaxPlayers) {
                             client.Logger.Error($"Turned away as server is at max clients");
@@ -229,41 +211,34 @@ public class Server {
                             List<Client> toDisconnect = Clients.FindAll(c => c.Id == header.Id && c.Connected && c.Socket != null);
                             Clients.RemoveAll(c => c.Id == header.Id);
 
+                            client.Id = header.Id;
                             Clients.Add(client);
 
                             Parallel.ForEachAsync(toDisconnect, (c, token) => c.Socket!.DisconnectAsync(false, token));
                             // done disconnecting and removing stale clients with the same id
 
                             ClientJoined?.Invoke(client, connect);
-                        // a new connection, not a reconnect, for an existing client
-                        } else if (wasFirst) {
-                            client.CleanMetadataOnNewConnection();
                         }
                     }
 
-                    // for all other clients that are already connected
                     List<Client> otherConnectedPlayers = Clients.FindAll(c => c.Id != header.Id && c.Connected && c.Socket != null);
                     await Parallel.ForEachAsync(otherConnectedPlayers, async (other, _) => {
                         IMemoryOwner<byte> tempBuffer = MemoryPool<byte>.Shared.RentZero(Constants.HeaderSize + (other.CurrentCostume.HasValue ? Math.Max(connect.Size, other.CurrentCostume.Value.Size) : connect.Size));
-
-                        // make the other client known to the (new) client
                         PacketHeader connectHeader = new PacketHeader {
-                            Id         = other.Id,
-                            Type       = PacketType.Connect,
-                            PacketSize = connect.Size,
+                            Id = other.Id,
+                            Type = PacketType.Connect,
+                            PacketSize = connect.Size
                         };
                         connectHeader.Serialize(tempBuffer.Memory.Span[..Constants.HeaderSize]);
                         ConnectPacket connectPacket = new ConnectPacket {
                             ConnectionType = ConnectPacket.ConnectionTypes.FirstConnection, // doesn't matter what it is
-                            MaxPlayers     = Settings.Instance.Server.MaxPlayers,
-                            ClientName     = other.Name,
+                            MaxPlayers = Settings.Instance.Server.MaxPlayers,
+                            ClientName = other.Name
                         };
                         connectPacket.Serialize(tempBuffer.Memory.Span[Constants.HeaderSize..]);
                         await client.Send(tempBuffer.Memory[..(Constants.HeaderSize + connect.Size)], null);
-
-                        // tell the (new) client what costume the other client has
                         if (other.CurrentCostume.HasValue) {
-                            connectHeader.Type       = PacketType.Costume;
+                            connectHeader.Type = PacketType.Costume;
                             connectHeader.PacketSize = other.CurrentCostume.Value.Size;
                             connectHeader.Serialize(tempBuffer.Memory.Span[..Constants.HeaderSize]);
                             other.CurrentCostume.Value.Serialize(tempBuffer.Memory.Span[Constants.HeaderSize..(Constants.HeaderSize + connectHeader.PacketSize)]);
@@ -271,19 +246,19 @@ public class Server {
                         }
 
                         tempBuffer.Dispose();
-
-                        // make the other client reset their puppet cache for this client, if it is a new connection (after restart)
-                        if (wasFirst) {
-                            await SendEmptyPackets(client, other);
-                        }
                     });
 
-                    Logger.Info($"Client {client.Name} ({client.Id}/{remote}) connected.");
-
-                    // send missing or outdated packets from others to the new client
-                    await ResendPackets(client);
+                    Logger.Info($"Client {client.Name} ({client.Id}/{socket.RemoteEndPoint}) connected.");
                 } else if (header.Id != client.Id && client.Id != Guid.Empty) {
                     throw new Exception($"Client {client.Name} sent packet with invalid client id {header.Id} instead of {client.Id}");
+                }
+
+                if (header.Type == PacketType.Costume) {
+                    CostumePacket costumePacket = new CostumePacket {
+                        BodyName = ""
+                    };
+                    costumePacket.Deserialize(memory.Memory.Span[Constants.HeaderSize..(Constants.HeaderSize + costumePacket.Size)]);
+                    client.CurrentCostume = costumePacket;
                 }
 
                 try {
@@ -320,15 +295,8 @@ public class Server {
         }
 
         disconnect:
-        if (client.Name != "Unknown User" && client.Id != Guid.Parse("00000000-0000-0000-0000-000000000000")) {
-            Logger.Info($"Client {remote} ({client.Name}/{client.Id}) disconnected from the server");
-        }
-        else {
-            Logger.Info($"Client {remote} disconnected from the server");
-        }
+        Logger.Info($"Client {socket.RemoteEndPoint} ({client.Name}/{client.Id}) disconnected from the server");
 
-        close:
-        bool wasConnected = client.Connected;
         // Clients.Remove(client)
         client.Connected = false;
         try {
@@ -337,43 +305,9 @@ public class Server {
         catch { /*lol*/ }
 
 #pragma warning disable CS4014
-        if (wasConnected) {
-            Task.Run(() => Broadcast(new DisconnectPacket(), client))
-                .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
-        }
+        Task.Run(() => Broadcast(new DisconnectPacket(), client))
+            .ContinueWith(x => { if (x.Exception != null) { Logger.Error(x.Exception.ToString()); } });
 #pragma warning restore CS4014
-    }
-
-    private async Task ResendPackets(Client client) {
-        async Task trySend<T>(Client other, string packetType) where T : struct, IPacket {
-            if (! other.Metadata.ContainsKey(packetType)) { return; }
-            try {
-                await client.Send((T) other.Metadata[packetType]!, other);
-            }
-            catch {
-                // lol who gives a fuck
-            }
-        };
-        await Parallel.ForEachAsync(this.ClientsConnected, async (other, _) => {
-            if (client.Id == other.Id) { return; }
-            await trySend<CostumePacket>(other, "lastCostumePacket");
-            await trySend<CapturePacket>(other, "lastCapturePacket");
-            await trySend<TagPacket>(other, "lastTagPacket");
-            await trySend<GamePacket>(other, "lastGamePacket");
-            await trySend<PlayerPacket>(other, "lastPlayerPacket");
-        });
-    }
-
-    private async Task SendEmptyPackets(Client client, Client other) {
-        await other.Send(new TagPacket {
-            UpdateType = TagPacket.TagUpdate.State | TagPacket.TagUpdate.Time,
-            IsIt       = false,
-            Seconds    = 0,
-            Minutes    = 0,
-        }, client);
-        await other.Send(new CapturePacket {
-            ModelName = "",
-        }, client);
     }
 
     private static PacketHeader GetHeader(Span<byte> data) {

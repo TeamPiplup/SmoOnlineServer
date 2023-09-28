@@ -30,10 +30,10 @@ public class Settings {
         LoadHandler?.Invoke();
     }
 
-    public static void SaveSettings(bool silent = false) {
+    public static void SaveSettings() {
         try {
             File.WriteAllText("settings.json", JsonConvert.SerializeObject(Instance, Formatting.Indented, new StringEnumConverter(new CamelCaseNamingStrategy())));
-            if (!silent) { Logger.Info("Saved settings to settings.json"); }
+            Logger.Info("Saved settings to settings.json");
         }
         catch (Exception e) {
             Logger.Error($"Failed to save settings.json {e}");
@@ -43,11 +43,10 @@ public class Settings {
     public ServerTable Server { get; set; } = new ServerTable();
     public FlipTable Flip { get; set; } = new FlipTable();
     public ScenarioTable Scenario { get; set; } = new ScenarioTable();
-    public BanListTable BanList { get; set; } = new BanListTable();
+    public BannedPlayers BanList { get; set; } = new BannedPlayers();
     public DiscordTable Discord { get; set; } = new DiscordTable();
     public ShineTable Shines { get; set; } = new ShineTable();
     public PersistShinesTable PersistShines { get; set; } = new PersistShinesTable();
-    public JsonApiTable JsonApi { get; set; } = new JsonApiTable();
 
     public class ServerTable {
         public string Address { get; set; } = IPAddress.Any.ToString();
@@ -59,16 +58,15 @@ public class Settings {
         public bool MergeEnabled { get; set; } = false;
     }
 
-    public class BanListTable {
+    public class BannedPlayers {
         public bool Enabled { get; set; } = false;
-        public ISet<Guid> Players { get; set; } = new SortedSet<Guid>();
-        public ISet<string> IpAddresses { get; set; } = new SortedSet<string>();
-        public ISet<string> Stages { get; set; } = new SortedSet<string>();
+        public List<Guid> Players { get; set; } = new List<Guid>();
+        public List<string> IpAddresses { get; set; } = new List<string>();
     }
 
     public class FlipTable {
         public bool Enabled { get; set; } = true;
-        public ISet<Guid> Players { get; set; } = new SortedSet<Guid>();
+        public List<Guid> Players { get; set; } = new List<Guid>();
         public FlipOptions Pov { get; set; } = FlipOptions.Both;
     }
 
@@ -87,11 +85,5 @@ public class Settings {
     {
         public bool Enabled { get; set; } = false;
         public string Filename { get; set; } = "./moons.json";
-    }
-
-    public class JsonApiTable
-    {
-        public bool Enabled { get; set; } = false;
-        public Dictionary<string, SortedSet<string>> Tokens { get; set; } = new Dictionary<string, SortedSet<string>>();
     }
 }

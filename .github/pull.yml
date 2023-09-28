@@ -1,9 +1,0 @@
-version: "1"
-rules:                      
-  - base: upstream          
-    upstream: Sanae6:master   
-    mergeMethod: merge
-    conflictReviewers:
-      - piplup55
-conflictLabel: "conflict"
-label: "Pull"
