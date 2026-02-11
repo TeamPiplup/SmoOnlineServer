@@ -162,6 +162,9 @@ public static class BanLists {
                 Scenario        = (sbyte) (permanent ? 69 : 21),
                 SubScenarioType = (byte)  (permanent ? 21 : 69),
             });
+            //Wait two seconds and force disconnect the player if not already disconnected
+            await Task.Delay(2000);
+            user.Dispose();
         });
     }
 
